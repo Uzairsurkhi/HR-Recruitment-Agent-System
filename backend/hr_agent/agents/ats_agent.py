@@ -3,9 +3,9 @@ from __future__ import annotations
 import re
 from typing import Any, Optional, TypedDict
 
-from langchain_core.runnables import RunnableConfig
-from langgraph.graph import END, StateGraph
-from sqlalchemy.ext.asyncio import AsyncSession
+from langchain_core.runnables import RunnableConfig  # pyright: ignore[reportMissingImports]
+from langgraph.graph import END, StateGraph  # pyright: ignore[reportMissingImports]
+from sqlalchemy.ext.asyncio import AsyncSession  # pyright: ignore[reportMissingImports]
 
 from hr_agent.config import get_settings
 from hr_agent.db.models import Candidate, PipelineStage

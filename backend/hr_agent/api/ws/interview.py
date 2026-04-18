@@ -13,6 +13,13 @@ router = APIRouter()
 SESSION_CACHE: dict[str, dict[str, Any]] = {}
 
 
+def _question_index_from_state(d: dict[str, Any]) -> int:
+    """Aligns with TIState: count of answers completed so far (before current answer)."""
+    if "question_index" in d and d.get("question_index") is not None:
+        return int(d["question_index"])
+    return len(d.get("transcript") or [])
+
+
 @router.websocket("/ws/interview")
 async def interview_ws(websocket: WebSocket) -> None:
     await websocket.accept()
@@ -54,7 +61,7 @@ async def interview_ws(websocket: WebSocket) -> None:
                         {
                             "type": "question",
                             "text": out.get("current_question", ""),
-                            "question_index": int(out.get("question_index", 0)),
+                            "question_index": _question_index_from_state(out),
                             "answer_seconds": settings.interview_answer_seconds,
                             "server_deadline_monotonic": deadline_monotonic,
                         }
@@ -76,7 +83,7 @@ async def interview_ws(websocket: WebSocket) -> None:
                         "session_id": session_id,
                         "candidate_id": candidate_id,
                         "experience_level": level,
-                        "question_index": int(base.get("question_index", 0)),
+                        "question_index": _question_index_from_state(base),
                         "transcript": list(base.get("transcript") or []),
                         "current_question": base.get("current_question", ""),
                         "last_answer": text,
@@ -100,7 +107,7 @@ async def interview_ws(websocket: WebSocket) -> None:
                         {
                             "type": "question",
                             "text": out.get("current_question", ""),
-                            "question_index": int(out.get("question_index", 0)),
+                            "question_index": _question_index_from_state(out),
                             "answer_seconds": settings.interview_answer_seconds,
                             "server_deadline_monotonic": deadline_monotonic,
                         }

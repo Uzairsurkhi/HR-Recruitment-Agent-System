@@ -70,7 +70,8 @@ class RAGService:
         j_emb = await self._embed(jd_chunks)
         jd_centroid = np.mean(np.array(j_emb), axis=0).tolist()
         scored: list[tuple[float, str]] = []
-        for emb, ch in zip(r_emb, resume_chunks, strict=True):
+        # strict= requires Python 3.10+; keep 3.9 compatible
+        for emb, ch in zip(r_emb, resume_chunks):
             scored.append((_cosine(emb, jd_centroid), ch))
         scored.sort(key=lambda x: x[0], reverse=True)
         top_k = scored[: min(5, len(scored))]

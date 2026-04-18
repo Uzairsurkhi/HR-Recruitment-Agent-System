@@ -20,6 +20,8 @@ class TIState(TypedDict, total=False):
     experience_level: str
     resume_excerpt: str
     jd_excerpt: str
+    # Answers completed so far (0 before Q1, 1 after Q1 answered, …). node_generate_question
+    # must return this on every turn so WebSocket SESSION_CACHE never loses the count.
     question_index: int
     current_question: str
     last_answer: Optional[str]
@@ -55,11 +57,15 @@ async def node_generate_question(state: TIState, config: RunnableConfig) -> dict
     )
     out = await llm.chat_json(system, user)
     q = str(out.get("question", "Describe a recent technical challenge you solved."))
+    # Must echo question_index on every generate so LangGraph output / SESSION_CACHE always
+    # carry it. Same meaning as after evaluate: number of answers completed so far (0..N-1).
+    qi = int(state.get("question_index", 0))
     return {
         **merged,
         "current_question": q,
         "phase": "generate",
         "last_answer": None,
+        "question_index": qi,
     }
 
 

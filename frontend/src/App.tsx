@@ -556,10 +556,15 @@ function SchedulingPanel({ onDone }: { onDone: () => void }) {
   const [note, setNote] = useState("");
 
   async function submit() {
+    const trimmed = note.trim();
+    if (!trimmed) {
+      alert("Enter your availability (e.g. weekdays after 2pm).");
+      return;
+    }
     const res = await api(`/api/candidates/${encodeURIComponent(cid)}/schedule`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ availability_note: note }),
+      body: JSON.stringify({ availability_note: trimmed }),
     });
     if (!res.ok) {
       alert(await res.text());
@@ -576,7 +581,12 @@ function SchedulingPanel({ onDone }: { onDone: () => void }) {
       <label>Candidate ID (scheduling)</label>
       <input value={cid} onChange={(e) => setCid(e.target.value)} />
       <label style={{ marginTop: "0.5rem" }}>Availability</label>
-      <textarea value={note} onChange={(e) => setNote(e.target.value)} required minLength={3} />
+      <textarea
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        placeholder="e.g. Mon–Fri after 3pm IST, or specific dates"
+        minLength={1}
+      />
       <div style={{ marginTop: "0.75rem" }}>
         <button type="button" onClick={() => void submit()}>
           Confirm &amp; send emails

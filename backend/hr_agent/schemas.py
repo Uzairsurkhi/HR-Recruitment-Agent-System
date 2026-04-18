@@ -71,7 +71,8 @@ class ScreeningAnswersIn(BaseModel):
 
 
 class SchedulingIn(BaseModel):
-    availability_note: str = Field(..., min_length=3)
+    """At least one non-space character; typical notes are longer."""
+    availability_note: str = Field(..., min_length=1, max_length=8000)
 
 
 class StageUpdateIn(BaseModel):

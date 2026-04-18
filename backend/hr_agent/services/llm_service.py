@@ -1,3 +1,4 @@
+import hashlib
 import json
 from typing import Any, Optional
 
@@ -68,15 +69,33 @@ class LLMService:
             data = r.json()
             return data["choices"][0]["message"]["content"]
 
+    def _mock_ats_scores(self, user: str) -> dict[str, Any]:
+        """Deterministic but varied demo scores from resume/JD text (no fixed 81.5)."""
+        digest = hashlib.sha256(user.encode("utf-8", errors="replace")).digest()
+
+        def frac(i: int) -> float:
+            b = digest[i % len(digest)]
+            return 0.28 + (b / 255.0) * 0.70  # ~0.28–0.98
+
+        sm = round(frac(0), 2)
+        ea = round(frac(3), 2)
+        kr = round(frac(6), 2)
+        overall = round((sm * 0.4 + ea * 0.35 + kr * 0.25) * 100, 1)
+        overall = max(0.0, min(100.0, overall))
+        return {
+            "skill_match": sm,
+            "experience_alignment": ea,
+            "keyword_relevance": kr,
+            "overall_score": overall,
+            "rationale": (
+                "Mock ATS (deterministic from resume/JD hash). "
+                "Set OPENAI_API_KEY and MOCK_LLM=false for real LLM scoring."
+            ),
+        }
+
     def _mock_json(self, system: str, user: str) -> dict[str, Any]:
-        if "ATS" in system or "score" in system.lower():
-            return {
-                "skill_match": 0.82,
-                "experience_alignment": 0.78,
-                "keyword_relevance": 0.85,
-                "overall_score": 81.5,
-                "rationale": "Mock: strong keyword overlap with JD; experience aligns with mid-level role.",
-            }
+        if "ATS scoring engine" in system:
+            return self._mock_ats_scores(user)
         if "technical" in system.lower() and "question" in system.lower():
             return {
                 "question": "Mock: Explain how you would design a REST API rate limiter.",
