@@ -82,6 +82,8 @@ class LLMService:
         kr = round(frac(6), 2)
         overall = round((sm * 0.4 + ea * 0.35 + kr * 0.25) * 100, 1)
         overall = max(0.0, min(100.0, overall))
+        cap = max(0.0, min(100.0, float(self.settings.ats_score_max)))
+        overall = min(overall, cap)
         return {
             "skill_match": sm,
             "experience_alignment": ea,
@@ -120,6 +122,11 @@ class LLMService:
                     },
                 ]
             }
-        if "chatbot" in system.lower() or "SQL" in system:
-            return {"reply": "Mock: please set OPENAI_API_KEY for grounded DB answers.", "sql": None}
+        if "chatbot" in system.lower() or "hr assistant" in system.lower() or "SQL" in system:
+            return {
+                "reply": (
+                    "Mock HR chatbot is active. I can answer from available database facts in demo mode. "
+                    "Set OPENAI_API_KEY with MOCK_LLM=false for richer responses."
+                )
+            }
         return {"result": "ok", "raw": user[:200]}

@@ -13,14 +13,16 @@ class Settings(BaseSettings):
     openai_embedding_model: str = "text-embedding-3-small"
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
     mock_llm: bool = False
-    mock_email: bool = True
+    mock_email: bool = False
     smtp_host: str = "localhost"
     smtp_port: int = 1025
     smtp_user: str = ""
     smtp_password: str = ""
     hr_notify_email: str = "hr@example.com"
     default_meeting_base: str = "https://meet.google.com"
-    ats_pass_threshold: float = 80.0
+    # Keep ATS scoring on a full 0-100 range unless explicitly overridden via env.
+    ats_score_max: float = 100.0
+    ats_pass_threshold: float = 60.0
     interview_question_count: int = 3
     interview_answer_seconds: int = 30
 

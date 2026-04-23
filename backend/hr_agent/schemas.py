@@ -71,8 +71,9 @@ class ScreeningAnswersIn(BaseModel):
 
 
 class SchedulingIn(BaseModel):
-    """At least one non-space character; typical notes are longer."""
+    """Scheduling note and optional explicit candidate email override."""
     availability_note: str = Field(..., min_length=1, max_length=8000)
+    candidate_email: Optional[str] = None
 
 
 class StageUpdateIn(BaseModel):

@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from hr_agent.api.deps import get_db
@@ -16,7 +17,14 @@ async def create_role(body: RoleCreate, session: AsyncSession = Depends(get_db))
         headcount_target=body.headcount_target,
     )
     session.add(r)
-    await session.commit()
+    try:
+        await session.commit()
+    except OperationalError as exc:
+        await session.rollback()
+        msg = str(exc).lower()
+        if "database is locked" in msg:
+            raise HTTPException(503, "Database is busy/locked. Close DB Browser write session and retry.")
+        raise
     await session.refresh(r)
     return r
 
@@ -25,5 +33,10 @@ async def create_role(body: RoleCreate, session: AsyncSession = Depends(get_db))
 async def list_roles(session: AsyncSession = Depends(get_db)) -> list[Role]:
     from sqlalchemy import select
 
-    res = await session.execute(select(Role).order_by(Role.created_at.desc()))
+    try:
+        res = await session.execute(select(Role).order_by(Role.created_at.desc()))
+    except OperationalError as exc:
+        if "database is locked" in str(exc).lower():
+            raise HTTPException(503, "Database is busy/locked. Close DB Browser write session and retry.")
+        raise
     return list(res.scalars().all())

@@ -140,13 +140,20 @@ async def schedule(
         raise HTTPException(404, "candidate not found")
     if cand.stage != PipelineStage.SCHEDULING:
         raise HTTPException(400, "candidate not in scheduling stage")
+    if body.candidate_email:
+        cand.email = body.candidate_email.strip()
     graph = SchedulingAgentGraph()
     out = await graph.run(
         session,
         {"candidate_id": candidate_id, "availability_note": body.availability_note},
     )
     await session.commit()
-    return {"ok": True, "meeting_link": out.get("meeting_link"), "emails_sent": out.get("emails_sent")}
+    return {
+        "ok": True,
+        "meeting_link": out.get("meeting_link"),
+        "emails_sent": out.get("emails_sent"),
+        "email_error": out.get("email_error"),
+    }
 
 
 @router.post("/{candidate_id}/technical/start", response_model=dict)

@@ -109,17 +109,166 @@ async def node_tools(state: ChatbotState, config: RunnableConfig) -> dict[str, A
 
 async def node_replies(state: ChatbotState, config: RunnableConfig) -> dict[str, Any]:
     llm = LLMService()
+    settings = get_settings()
+    user_msg = (state.get("user_message") or "").strip()
+    db_facts = (state.get("db_facts") or "").strip()
+    tool_results = state.get("tool_results") or []
+
+    if settings.mock_llm or not settings.openai_api_key:
+        lines = [ln.strip() for ln in db_facts.splitlines() if ln.strip()]
+        msg_lower = user_msg.lower()
+        greeting_words = {
+            "hi",
+            "hello",
+            "hey",
+            "yo",
+            "hola",
+            "namaste",
+            "hii",
+            "heyy",
+            "sup",
+        }
+        tokens = [t for t in re.findall(r"[a-zA-Z0-9_]+", msg_lower) if len(t) > 2]
+        meaningful_tokens = [
+            t
+            for t in tokens
+            if t
+            not in {
+                "the",
+                "and",
+                "for",
+                "with",
+                "that",
+                "this",
+                "from",
+                "have",
+                "what",
+                "when",
+                "where",
+                "which",
+                "please",
+                "about",
+            }
+        ]
+
+        small_talk_phrases = {
+            "how are you",
+            "how r you",
+            "who are you",
+            "what can you do",
+            "thanks",
+            "thank you",
+            "good morning",
+            "good afternoon",
+            "good evening",
+            "bye",
+            "good night",
+        }
+        hr_db_keywords = {
+            "candidate",
+            "candidates",
+            "role",
+            "roles",
+            "database",
+            "stage",
+            "ats",
+            "score",
+            "interview",
+            "technical",
+            "screening",
+            "scheduled",
+            "rejected",
+            "hired",
+            "pipeline",
+            "count",
+            "email",
+            "jd",
+            "job",
+        }
+
+        raw_tokens = re.findall(r"[a-zA-Z0-9_]+", msg_lower)
+        is_pure_greeting = bool(raw_tokens) and all(t in greeting_words for t in raw_tokens)
+        is_greeting = is_pure_greeting or (
+            not meaningful_tokens and any(g in msg_lower.split() for g in greeting_words)
+        )
+        is_small_talk = any(p in msg_lower for p in small_talk_phrases)
+        is_hr_db_query = any(k in msg_lower for k in hr_db_keywords)
+
+        if is_small_talk:
+            return {
+                "reply": (
+                    "I am doing well, thanks for asking. I can help with HR data too, such as candidate "
+                    "status, ATS scores, interview stages, and role details."
+                )
+            }
+
+        if is_greeting:
+            return {
+                "reply": (
+                    "Hi! I can help with HR data like candidate status, ATS scores, interview stages, "
+                    "or role details..."
+                )
+            }
+
+        if not is_hr_db_query:
+            return {
+                "reply": (
+                    "I can chat normally, and I can also answer HR database questions. "
+                    "If you want data, ask something like 'show candidates in interview_scheduled stage' "
+                    "or 'count candidates by stage'."
+                )
+            }
+
+        matched: list[str] = []
+        for ln in lines:
+            ln_lower = ln.lower()
+            if any(token in ln_lower for token in meaningful_tokens):
+                matched.append(ln)
+            if len(matched) >= 8:
+                break
+
+        if not matched:
+            if meaningful_tokens:
+                return {
+                    "reply": (
+                        "I could not find matching records for that query in the database. "
+                        "Try using role title, candidate name, stage, or candidate ID."
+                    )
+                }
+            matched = lines[:5]
+
+        parts: list[str] = []
+        if matched:
+            summary_lines = [m for m in matched if m.startswith("COUNT ")]
+            entity_lines = [m for m in matched if not m.startswith("COUNT ")]
+            parts.append("Here is the relevant database context:")
+            if summary_lines:
+                parts.append("Summary:")
+                parts.extend(f"- {m}" for m in summary_lines[:5])
+            if entity_lines:
+                parts.append("Details:")
+                parts.extend(f"- {m}" for m in entity_lines[:8])
+        else:
+            parts.append("I could not find matching records in the database yet.")
+        if tool_results:
+            parts.append(f"Tool results: {json.dumps(tool_results)}")
+        return {"reply": "\n".join(parts)}
+
     system = (
         "You are an HR assistant. Answer ONLY using the provided DB_FACTS and TOOL_RESULTS. "
         "If information is missing, say you don't have it in the database. "
         "Return JSON with key: reply (string)."
     )
     user = (
-        f"USER:\n{state.get('user_message','')}\n\nDB_FACTS:\n{state.get('db_facts','')}\n\n"
-        f"TOOL_RESULTS:\n{json.dumps(state.get('tool_results') or [])}\n"
+        f"USER:\n{user_msg}\n\nDB_FACTS:\n{db_facts}\n\n"
+        f"TOOL_RESULTS:\n{json.dumps(tool_results)}\n"
     )
     out = await llm.chat_json(system, user)
-    return {"reply": str(out.get("reply", "I could not find that in the database."))}
+    reply = out.get("reply")
+    if not reply:
+        # Be tolerant of non-chatbot mock payloads to avoid hard fallback text.
+        reply = out.get("result") or out.get("raw")
+    return {"reply": str(reply or "I could not find that in the database.")}
 
 
 def build_chatbot_graph() -> StateGraph:

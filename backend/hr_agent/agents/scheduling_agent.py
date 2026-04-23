@@ -19,6 +19,7 @@ class SchedulingState(TypedDict, total=False):
     availability_note: str
     meeting_link: str
     emails_sent: bool
+    email_error: str
 
 
 async def node_build_link(state: SchedulingState, config: RunnableConfig) -> dict[str, Any]:
@@ -57,26 +58,29 @@ async def node_send_emails(state: SchedulingState, config: RunnableConfig) -> di
         f"Meeting: {state.get('meeting_link')}\n"
         f"Availability noted: {state.get('availability_note')}\n"
     )
-    await mail.send_if_new(
-        session,
-        template_key="interview_confirm_candidate",
-        candidate_id=cand.id,
-        recipient=cand.email,
-        subject=subj,
-        body=body,
-    )
-    hr_body = (
-        f"Candidate {cand.full_name} ({cand.email}) confirmed scheduling.\n"
-        f"Link: {state.get('meeting_link')}\n"
-    )
-    await mail.send_if_new(
-        session,
-        template_key="interview_confirm_hr",
-        candidate_id=cand.id,
-        recipient=settings.hr_notify_email,
-        subject=f"[HR] Interview scheduled: {cand.full_name}",
-        body=hr_body,
-    )
+    try:
+        await mail.send_if_new(
+            session,
+            template_key="interview_confirm_candidate",
+            candidate_id=cand.id,
+            recipient=cand.email,
+            subject=subj,
+            body=body,
+        )
+        hr_body = (
+            f"Candidate {cand.full_name} ({cand.email}) confirmed scheduling.\n"
+            f"Link: {state.get('meeting_link')}\n"
+        )
+        await mail.send_if_new(
+            session,
+            template_key="interview_confirm_hr",
+            candidate_id=cand.id,
+            recipient=settings.hr_notify_email,
+            subject=f"[HR] Interview scheduled: {cand.full_name}",
+            body=hr_body,
+        )
+    except Exception as exc:
+        return {"emails_sent": False, "email_error": str(exc)}
     cand.stage = PipelineStage.INTERVIEW_SCHEDULED
     await session.flush()
     return {"emails_sent": True}

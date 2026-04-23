@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import re
 from typing import Any, Optional, TypedDict
 
@@ -12,6 +13,9 @@ from hr_agent.db.models import Candidate, PipelineStage
 from hr_agent.services.email_service import EmailService
 from hr_agent.services.llm_service import LLMService
 from hr_agent.services.rag_service import RAGService
+
+
+logger = logging.getLogger(__name__)
 
 
 class ATSState(TypedDict):
@@ -61,13 +65,43 @@ async def node_score_llm(state: ATSState, config: RunnableConfig) -> dict[str, A
         f"Full resume:\n{state['resume_text'][:12000]}\n"
     )
     out = await llm.chat_json(system, user)
-    overall = float(out.get("overall_score", 0))
+
+    # Parse and clamp all component scores for stable ATS calibration.
+    skill = max(0.0, min(1.0, float(out.get("skill_match", 0))))
+    exp = max(0.0, min(1.0, float(out.get("experience_alignment", 0))))
+    kw = max(0.0, min(1.0, float(out.get("keyword_relevance", 0))))
+    model_overall = max(0.0, min(100.0, float(out.get("overall_score", 0))))
+    retrieval = max(0.0, min(1.0, float(state.get("retrieval_score", 0))))
+
+    # Blend LLM score with deterministic feature signal to reduce under-scoring on
+    # strong profiles where individual components are high.
+    feature_overall = (skill * 0.35 + exp * 0.35 + kw * 0.2 + retrieval * 0.1) * 100.0
+    calibrated_overall = round(
+        max(model_overall, 0.65 * model_overall + 0.35 * feature_overall + 4.0),
+        1,
+    )
+    overall = max(0.0, min(100.0, calibrated_overall))
+
+    settings = get_settings()
+    ats_cap = max(0.0, min(100.0, float(settings.ats_score_max)))
+    if overall > ats_cap:
+        overall = round(ats_cap, 1)
+
+    rationale = str(out.get("rationale", "")).strip()
+    if rationale:
+        rationale = rationale + " "
+    rationale += (
+        f"Calibrated ATS score from model and feature signal (retrieval={retrieval:.2f})."
+    )
+    if calibrated_overall > ats_cap:
+        rationale += f" Capped at {ats_cap} (ats_score_max)."
+
     return {
-        "skill_match": float(out.get("skill_match", 0)),
-        "experience_alignment": float(out.get("experience_alignment", 0)),
-        "keyword_relevance": float(out.get("keyword_relevance", 0)),
+        "skill_match": skill,
+        "experience_alignment": exp,
+        "keyword_relevance": kw,
         "overall_score": overall,
-        "rationale": str(out.get("rationale", "")),
+        "rationale": rationale,
     }
 
 
@@ -109,15 +143,20 @@ async def node_rejection_email(state: ATSState, config: RunnableConfig) -> dict[
         f"Dear {cand.full_name},\n\nThank you for applying. After review, we will not be moving forward.\n\n"
         f"ATS score: {state['overall_score']:.1f}.\n"
     )
-    await mail.send_if_new(
-        session,
-        template_key="ats_rejection",
-        candidate_id=cand.id,
-        recipient=cand.email,
-        subject=subj,
-        body=body,
-    )
-    return {"rejection_sent": True}
+    try:
+        sent = await mail.send_if_new(
+            session,
+            template_key="ats_rejection",
+            candidate_id=cand.id,
+            recipient=cand.email,
+            subject=subj,
+            body=body,
+        )
+        return {"rejection_sent": bool(sent)}
+    except Exception:
+        # Email delivery should not fail the ATS pipeline.
+        logger.exception("ATS rejection email send failed for candidate_id=%s", cand.id)
+        return {"rejection_sent": False}
 
 
 def route_after_persist(state: ATSState) -> str:

@@ -554,6 +554,7 @@ function ScreeningPanel({ onDone }: { onDone: () => void }) {
 function SchedulingPanel({ onDone }: { onDone: () => void }) {
   const [cid, setCid] = useState("");
   const [note, setNote] = useState("");
+  const [candidateEmail, setCandidateEmail] = useState("");
 
   async function submit() {
     const trimmed = note.trim();
@@ -564,7 +565,10 @@ function SchedulingPanel({ onDone }: { onDone: () => void }) {
     const res = await api(`/api/candidates/${encodeURIComponent(cid)}/schedule`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ availability_note: trimmed }),
+      body: JSON.stringify({
+        availability_note: trimmed,
+        candidate_email: candidateEmail.trim() || null,
+      }),
     });
     if (!res.ok) {
       alert(await res.text());
@@ -572,7 +576,11 @@ function SchedulingPanel({ onDone }: { onDone: () => void }) {
     }
     const data = await res.json();
     onDone();
-    alert(`Scheduled. Meeting: ${data.meeting_link}`);
+    alert(
+      `Scheduled. Meeting: ${data.meeting_link}\nEmails sent: ${data.emails_sent ? "yes" : "no"}${
+        data.email_error ? `\nEmail error: ${data.email_error}` : ""
+      }`
+    );
   }
 
   return (
@@ -580,6 +588,13 @@ function SchedulingPanel({ onDone }: { onDone: () => void }) {
       <h2>Scheduling &amp; email</h2>
       <label>Candidate ID (scheduling)</label>
       <input value={cid} onChange={(e) => setCid(e.target.value)} />
+      <label style={{ marginTop: "0.5rem" }}>Candidate email (optional override)</label>
+      <input
+        type="email"
+        value={candidateEmail}
+        onChange={(e) => setCandidateEmail(e.target.value)}
+        placeholder="candidate@example.com"
+      />
       <label style={{ marginTop: "0.5rem" }}>Availability</label>
       <textarea
         value={note}
